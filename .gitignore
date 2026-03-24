@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 temp_visuals/
+saved_visual/
+saved_zips/

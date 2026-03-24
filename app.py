@@ -12,6 +12,9 @@ from network_generator import NetworkGenerator, validate_topology
 from visualizer import plot_graph_to_image, IMG_WIDTH_PX, IMG_HEIGHT_PX, TEMP_DIR
 from json_handler import generate_full_json_dict, load_graph_from_json, load_graph_from_data
 
+# --- NEW: ANTS ---
+from ants import solve_and_visualize
+
 # ==========================================
 # DIRECTORY MANAGEMENT
 # ==========================================
@@ -38,6 +41,24 @@ def extract_jsons_from_zip(zip_path):
 # ==========================================
 # UI EVENT HANDLERS
 # ==========================================
+
+# --- NEW: ANTS HANDLER ---
+def handle_release_ants(state_data):
+    if not state_data or "graph" not in state_data: 
+        return gr.update(), "⚠️ Please generate a network first before releasing the ants.", state_data
+    
+    G = state_data["graph"]
+    w = state_data["width"]
+    h = state_data["height"]
+    
+    try:
+        # Run the ACO algorithm
+        img_path, best_length = solve_and_visualize(G, w, h)
+        metrics = f"**🐜 Swarm Complete!**\nFound highly optimized path covering all {len(G.nodes())} rooms in **{best_length} moves**."
+        return img_path, metrics, state_data
+    except Exception as e:
+        return gr.update(), f"⚠️ Ant Colony Error: {str(e)}", state_data
+
 
 def handle_plot_click(evt: gr.SelectData, click_mode, state_data):
     if not state_data or "graph" not in state_data: 
@@ -143,7 +164,6 @@ def generate_and_store(topology, preset, width, height, variant, void_frac, t_ed
         is_valid, val_msg = validate_topology(graph, topology)
         val_icon = "✅" if is_valid else "⚠️"
         
-        # --- NEW PROMINENT STATUS MESSAGING ---
         status_header = "✅ **Status:** Generation Successful."
         status_detail = ""
         
@@ -152,20 +172,17 @@ def generate_and_store(topology, preset, width, height, variant, void_frac, t_ed
             diff = current_edges - actual_edges
             
             if diff < 0:
-                # Undershoot (Saturation)
                 missing = abs(diff)
                 status_header = f"⚠️ **Status:** Saturation Limit Reached (Missing {missing} Edges)"
                 status_detail = (f"The generator saturated at **{current_edges} edges**. It could not place the remaining {missing} edges without crossing existing lines.\n\n"
                                  f"**Suggestion:** To fit {actual_edges} edges, please **increase the Grid Width/Height** or **decrease Void Fraction** to create more physical space.")
             elif diff > 0:
-                # Overshoot (Connectivity)
                 extra = diff
                 status_header = f"⚠️ **Status:** Connectivity Forced (Added {extra} Edges)"
                 status_detail = (f"The target was {actual_edges}, but **{current_edges} edges** were required to keep the graph connected.\n"
                                  f"The system automatically added links to prevent isolated nodes.")
             else:
                 status_header = f"✅ **Status:** Exact Target Met ({actual_edges} Edges)"
-        # --------------------------------------
         
         img_path = plot_graph_to_image(graph, width, height)
         
@@ -176,9 +193,11 @@ def generate_and_store(topology, preset, width, height, variant, void_frac, t_ed
                    f"{status_header}\n{status_detail}")
                    
         state_data = { "graph": graph, "width": width, "height": height, "topology": topology, "edge_start": None }
-        return img_path, metrics, state_data, gr.update(interactive=True)
+        
+        # --- NEW: Enable Ants Button after generation ---
+        return img_path, metrics, state_data, gr.update(interactive=True), gr.update(interactive=True)
     except Exception as e:
-        return None, f"Error: {e}", None, gr.update(interactive=False)
+        return None, f"Error: {e}", None, gr.update(interactive=False), gr.update(interactive=False)
 
 def run_batch_generation(count, topology, width, height, variant, min_v, max_v, min_e, max_e):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -283,7 +302,7 @@ def render_loaded_graph(idx, loaded_data):
     return img_path, info_text
 
 # ==========================================
-# 5. GRADIO UI LAYOUT
+# GRADIO UI LAYOUT
 # ==========================================
 with gr.Blocks(title="Interactive Network Generator") as demo:
     state = gr.State({"edge_start": None})
@@ -311,6 +330,10 @@ with gr.Blocks(title="Interactive Network Generator") as demo:
                         capacity_info = gr.Markdown("Active Grid Capacity: N/A")
                     
                     gen_btn = gr.Button("Generate Network", variant="primary")
+                    
+                    # --- NEW: ANTS BUTTON IN UI ---
+                    ants_btn = gr.Button("🐜 Release Ants (Find Route)", variant="secondary", interactive=False)
+                    
                     with gr.Row():
                         save_json_btn = gr.Button("Download JSON", interactive=False)
                         save_vis_btn = gr.Button("💾 Save Visual Locally", interactive=False)
@@ -333,7 +356,7 @@ with gr.Blocks(title="Interactive Network Generator") as demo:
                         with gr.Row():
                             b_min_void = gr.Slider(0.0, 0.9, 0.1, step=0.05, label="Min Void Fraction")
                             b_max_void = gr.Slider(0.0, 0.9, 0.6, step=0.05, label="Max Void Fraction")
-                        with gr.Row():
+                        with Row():
                             b_min_edges = gr.Number(10, label="Min Target Edges", precision=0)
                             b_max_edges = gr.Number(100, label="Max Target Edges", precision=0)
                     batch_btn = gr.Button("Generate Batch ZIP", variant="primary")
@@ -369,8 +392,12 @@ with gr.Blocks(title="Interactive Network Generator") as demo:
     void_frac.change(update_ui_for_variant, inputs_var, [void_frac, t_edges, capacity_info])
 
     gen_args = [topology, preset, width, height, variant, void_frac, t_edges]
-    gen_btn.click(generate_and_store, gen_args, [plot_img, metrics, state, save_json_btn])
+    # Updated output mapping to enable the ants button
+    gen_btn.click(generate_and_store, gen_args, [plot_img, metrics, state, save_json_btn, ants_btn])
     plot_img.select(handle_plot_click, [click_mode, state], [plot_img, metrics, state])
+
+    # --- NEW: ANTS CLICK EVENT ---
+    ants_btn.click(handle_release_ants, [state], [plot_img, metrics, state])
 
     save_json_btn.click(save_single_json_action, [state], [json_file]).then(lambda: gr.update(visible=True), None, [json_file])
     save_vis_btn.click(save_permanent_visual, [state], [save_msg])

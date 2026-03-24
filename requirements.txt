@@ -1,0 +1,6 @@
+numpy>=1.21
+networkx>=2.8
+matplotlib>=3.5
+scipy
+gradio
+

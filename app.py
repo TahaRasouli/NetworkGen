@@ -356,7 +356,7 @@ with gr.Blocks(title="Interactive Network Generator") as demo:
                         with gr.Row():
                             b_min_void = gr.Slider(0.0, 0.9, 0.1, step=0.05, label="Min Void Fraction")
                             b_max_void = gr.Slider(0.0, 0.9, 0.6, step=0.05, label="Max Void Fraction")
-                        with Row():
+                        with gr.Row():
                             b_min_edges = gr.Number(10, label="Min Target Edges", precision=0)
                             b_max_edges = gr.Number(100, label="Max Target Edges", precision=0)
                     batch_btn = gr.Button("Generate Batch ZIP", variant="primary")

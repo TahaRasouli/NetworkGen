@@ -3,6 +3,10 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import os
 import shutil
+import os
+import matplotlib
+matplotlib.use('Agg')
+import networkx as nx
 
 IMG_WIDTH_PX = 800
 IMG_HEIGHT_PX = 800
@@ -19,48 +23,57 @@ def get_sorted_nodes(G):
     """Returns nodes sorted by X, then Y to ensure consistent IDs."""
     return sorted(list(G.nodes()), key=lambda l: (l[0], l[1]))
 
-def plot_graph_to_image(graph, width, height, title="Network", highlight_node=None, save_dir=TEMP_DIR):
-    """Generates a matplotlib plot and saves it as an image file."""
-    dpi = 100
-    fig = plt.figure(figsize=(IMG_WIDTH_PX/dpi, IMG_HEIGHT_PX/dpi), dpi=dpi)
-    ax = fig.add_axes([0, 0, 1, 1]) 
-    
-    pos = {node: (node[0], node[1]) for node in graph.nodes()}
-    
-    # Dynamic sizing to prevent jamming
-    max_dim = max(width, height)
-    if max_dim <= 6:
-        n_sz, f_sz, h_sz = 900, 12, 1100
-    elif max_dim <= 10:
-        n_sz, f_sz, h_sz = 500, 9, 650
-    elif max_dim <= 16:
-        n_sz, f_sz, h_sz = 200, 7, 280
-    elif max_dim <= 24:
-        n_sz, f_sz, h_sz = 100, 5, 140
-    else:
-        n_sz, f_sz, h_sz = 50, 4, 80
+def plot_graph_to_image(G, width, height, highlight_node=None, title=None, save_dir="temp_visuals"):
+    """
+    Renders the NetworkX graph to a PNG image with a locked, centered camera.
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    filepath = os.path.join(save_dir, "current_graph.png")
 
-    nx.draw_networkx_edges(graph, pos, ax=ax, width=2, alpha=0.6, edge_color="#333")
-    
-    normal_nodes = [n for n in graph.nodes() if n != highlight_node]
-    nx.draw_networkx_nodes(graph, pos, ax=ax, nodelist=normal_nodes, node_size=n_sz, node_color="#4F46E5", edgecolors="white", linewidths=1.5)
-    
-    if highlight_node and graph.has_node(highlight_node):
-        nx.draw_networkx_nodes(graph, pos, ax=ax, nodelist=[highlight_node], node_size=h_sz, node_color="#EF4444", edgecolors="white", linewidths=2.0)
-    
-    sorted_nodes = get_sorted_nodes(graph)
-    labels = {node: str(i+1) for i, node in enumerate(sorted_nodes)}
-    nx.draw_networkx_labels(graph, pos, labels, ax=ax, font_size=f_sz, font_color="white", font_weight="bold")
-    
-    ax.set_xlim(-0.5, width + 0.5)
-    ax.set_ylim(height + 0.5, -0.5)
-    ax.grid(True, linestyle=':', alpha=0.3)
-    ax.set_axis_on()
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    prefix = "temp_plot" if save_dir == TEMP_DIR else "saved_plot"
-    fname = os.path.join(save_dir, f"{prefix}_{timestamp}.png")
-    
-    plt.savefig(fname)
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    # 1. Map Coordinates for nodes
+    pos = {n: (n[0], n[1]) for n in G.nodes()}
+
+    # 2. Sort nodes to match the numbering from top-left to bottom-right
+    sorted_nodes = sorted(list(G.nodes()), key=lambda x: (x[1], x[0]))
+    labels = {n: str(i + 1) for i, n in enumerate(sorted_nodes)}
+
+    # 3. Determine node colors (highlighting selected nodes if applicable)
+    node_colors = []
+    for n in G.nodes():
+        if highlight_node and n == highlight_node:
+            node_colors.append('lime')
+        else:
+            node_colors.append('#6366f1') # The purple/indigo from your screenshot
+
+    # 4. Draw the base graph (Edges first so they sit under the nodes)
+    nx.draw_networkx_edges(G, pos, ax=ax, edge_color='gray', width=2.0, alpha=0.8)
+    nx.draw_networkx_nodes(G, pos, ax=ax, node_color=node_colors, node_size=700, edgecolors='white', linewidths=2)
+    nx.draw_networkx_labels(G, pos, labels=labels, ax=ax, font_color='white', font_weight='bold', font_size=10)
+
+    # 5. Draw the background grid
+    ax.set_xticks(range(int(width)))
+    ax.set_yticks(range(int(height)))
+    ax.grid(True, linestyle=':', alpha=0.5)
+
+    if title:
+        ax.set_title(title, pad=20, fontsize=14, fontweight='bold')
+
+    # --- THE CAMERA FIX ---
+    # This forces the camera to look at the entire grid evenly, 
+    # regardless of whether edge nodes are missing.
+    ax.set_xlim(-1, width)
+    ax.set_ylim(height, -1) # Going from height -> -1 automatically inverts the Y-axis!
+    # ----------------------
+
+    # Lighten the outer border box
+    for spine in ax.spines.values():
+        spine.set_color('#dddddd')
+
+    # Save and cleanup
+    plt.tight_layout()
+    plt.savefig(filepath, bbox_inches='tight', dpi=100)
     plt.close(fig)
-    return fname
+
+    return filepath
